@@ -1,6 +1,6 @@
 {
   "name": "AquaShield Pro",
   "description": "Sistem mitigasi banjir real-time dengan monitoring sensor sungai dan prediksi ML di Jakarta.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

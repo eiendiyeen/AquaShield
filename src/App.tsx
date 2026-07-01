@@ -393,7 +393,7 @@ export default function App() {
           {/* Quick Help documentation link */}
           <button 
             onClick={() => {
-              alert("AquaShield Pro Help Center\n\nUntuk bantuan operasional posko darurat, silakan gunakan Kontak Darurat di bagian bawah sidebar.");
+              alert("AquaShield Help Center\n\nUntuk bantuan operasional posko darurat, silakan gunakan Kontak Darurat di bagian bawah sidebar.");
             }}
             className="p-2 hover:bg-slate-50 text-slate-500 hover:text-slate-800 rounded-full border border-slate-100 transition-all hidden sm:block"
             title="Pusat Bantuan"
@@ -778,7 +778,7 @@ export default function App() {
           {/* Core system status line footer */}
           <footer className="mt-8 pt-4 border-t border-slate-100 flex flex-wrap justify-between items-center text-[11px] text-slate-400 gap-4">
             <div>
-              © 2026 <strong>AquaShield Pro</strong> • Posko Utama Penanggulangan Bencana Banjir Jakarta.
+              © 2026 <strong>AquaShield</strong> • Posko Utama Penanggulangan Bencana Banjir Jakarta.
             </div>
             <div className="flex gap-4 font-mono font-medium">
               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> AWS Core: Online</span>
