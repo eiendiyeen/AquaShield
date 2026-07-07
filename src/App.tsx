@@ -64,6 +64,7 @@ export default function App() {
   const [weather, setWeather] = useState<WeatherInfo>(initialWeather);
   const [alertLogs, setAlertLogs] = useState<AlertLog[]>(initialAlertLogs);
   const [citizenReports, setCitizenReports] = useState<CitizenReport[]>(initialCitizenReports);
+  const [deviceLocation, setDeviceLocation] = useState<{ lat: number; lon: number; region: string } | null>(null);
   
   // Interactive Simulation & Live State
   const [showHeatmap, setShowHeatmap] = useState<boolean>(true);
@@ -141,6 +142,53 @@ export default function App() {
     return () => clearInterval(clock);
   }, []);
 
+  // Sync regional weather metrics dynamically when selected sensor changes (reflecting device location context)
+  useEffect(() => {
+    if (!selectedSensor) return;
+    const region = selectedSensor.region;
+    
+    // Create organic, realistic local variations in weather depending on the area
+    let temp = 26;
+    let humidity = 88;
+    let windSpeed = 12;
+    let condition = weather.condition;
+    
+    if (region.includes('Bogor') || region.includes('Hulu')) {
+      temp = 22; // cooler mountainous region
+      humidity = 94; // wetter/misted air
+      windSpeed = 7;
+      condition = 'Hujan Ringan'; // higher likelihood of light rain in Bogor hills
+    } else if (region.includes('Utara')) {
+      temp = 29; // hotter coastal sea level
+      humidity = 82;
+      windSpeed = 17; // stronger marine winds
+    } else if (region.includes('Selatan')) {
+      temp = 26;
+      humidity = 87;
+      windSpeed = 11;
+    } else if (region.includes('Pusat')) {
+      temp = 28;
+      humidity = 84;
+      windSpeed = 9;
+    } else if (region.includes('Timur')) {
+      temp = 27;
+      humidity = 85;
+      windSpeed = 12;
+    } else if (region.includes('Barat')) {
+      temp = 28;
+      humidity = 86;
+      windSpeed = 13;
+    }
+    
+    setWeather(prev => ({
+      ...prev,
+      temp,
+      humidity,
+      windSpeed,
+      condition
+    }));
+  }, [selectedSensor?.id]);
+
   // Update specified sensor water level directly (e.g. from sliders or simulator)
   const handleUpdateSensorLevel = (id: string, level: number) => {
     setSensors((prev) => 
@@ -160,6 +208,45 @@ export default function App() {
         }
         return s;
       })
+    );
+  };
+
+  // Update specified sensor coordinates (x, y) on the map
+  const handleUpdateSensorCoordinates = (id: string, x: number, y: number) => {
+    setSensors((prev) => 
+      prev.map((s) => {
+        if (s.id === id) {
+          const updated = {
+            ...s,
+            coordinates: { x, y }
+          };
+          if (selectedSensor?.id === id) {
+            setSelectedSensor(updated);
+          }
+          return updated;
+        }
+        return s;
+      })
+    );
+    // Find sensor name for the alert log
+    const targetSensor = sensors.find(s => s.id === id);
+    if (targetSensor) {
+      triggerAlertLog(
+        `Lokasi Diubah: ${targetSensor.name}`,
+        `Posisi koordinat sensor berhasil dipindahkan ke X: ${x}%, Y: ${y}% pada peta spasial.`,
+        'success'
+      );
+    }
+  };
+
+  // Add a new custom sensor
+  const handleAddSensor = (newSensor: Sensor) => {
+    setSensors((prev) => [...prev, newSensor]);
+    setSelectedSensor(newSensor);
+    triggerAlertLog(
+      `Sensor Baru Ditambahkan`,
+      `Sensor "${newSensor.name}" berhasil dikonfigurasi pada koordinat X: ${newSensor.coordinates.x}%, Y: ${newSensor.coordinates.y}%.`,
+      'success'
     );
   };
 
@@ -210,6 +297,245 @@ export default function App() {
       prev.map((r) => r.id === id ? { ...r, upvotes: r.upvotes + 1 } : r)
     );
   };
+
+  // Synchronize entire app's telemetry and data when deviceLocation changes (localizing around user coordinates)
+  useEffect(() => {
+    if (!deviceLocation) return;
+
+    const synchronizeAroundLocation = async () => {
+      const { lat, lon, region } = deviceLocation;
+
+      // Initial fallbacks based on parsing the region string
+      const cleanRegion = region.replace(/\(.*\)/g, '').trim();
+      const parts = cleanRegion.split(',');
+      let city = parts[parts.length - 1]?.trim() || parts[0]?.trim() || 'Daerah Sekitar';
+      let subdistricts: string[] = [];
+
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`);
+        if (response.ok) {
+          const data = await response.json();
+          const address = data.address || {};
+          city = address.city || address.town || address.municipality || address.city_district || city;
+          
+          const names = [
+            address.suburb,
+            address.village,
+            address.neighbourhood,
+            address.residential,
+            address.city_district
+          ].filter((n): n is string => typeof n === 'string' && n.length > 0);
+          
+          if (names.length > 0) {
+            subdistricts = Array.from(new Set(names));
+          }
+        }
+      } catch (err) {
+        console.warn('Nominatim reverse-geocoding failed, using fallback parsing:', err);
+      }
+
+      // Indonesian regions presets to enhance authenticity
+      const cityLower = city.toLowerCase();
+      let riverNames = ['Sungai Utama', 'Kali Anak', 'Saluran Pembuang', 'Tanggul Utama', 'Kanal Barat', 'Kali Samping'];
+      let presetSubs = ['Pusat', 'Utara', 'Selatan', 'Barat', 'Timur', 'Hulu'];
+
+      if (cityLower.includes('jakarta')) {
+        riverNames = ['Ciliwung', 'Pesanggrahan', 'Angke', 'Banjir Kanal Barat', 'Cipinang', 'Sunter'];
+        presetSubs = ['Manggarai', 'Karet', 'Pluit', 'Kebon Baru', 'Kampung Melayu', 'Sunter'];
+      } else if (cityLower.includes('bogor')) {
+        riverNames = ['Ciliwung', 'Cisadane', 'Ciawi', 'Cikeas', 'Ciliwung Hulu', 'Cisadane Hulu'];
+        presetSubs = ['Katulampa', 'Baranangsiang', 'Ciawi', 'Bojonggede', 'Sempur', 'Sentul'];
+      } else if (cityLower.includes('bandung')) {
+        riverNames = ['Citarum', 'Cikapundung', 'Cisangkuy', 'Citepus', 'Cidurian', 'Cikapundung Hulu'];
+        presetSubs = ['Dayeuhkolot', 'Rancaekek', 'Dago', 'Gedebage', 'Pasteur', 'Cibaduyut'];
+      } else if (cityLower.includes('surabaya')) {
+        riverNames = ['Kalimas', 'Kali Jagir', 'Brantas', 'Kali Surabaya', 'Pegirian', 'Kanal Wonokromo'];
+        presetSubs = ['Gubeng', 'Wonokromo', 'Tandes', 'Jembatan Merah', 'Keputih', 'Kenjeran'];
+      } else if (cityLower.includes('semarang')) {
+        riverNames = ['Banjir Kanal Barat', 'Banjir Kanal Timur', 'Kali Garang', 'Kali Semarang', 'Kali Kreo', 'Kali Babon'];
+        presetSubs = ['Simpang Lima', 'Kaligawe', 'Tugu Muda', 'Johar', 'Tembalang', 'Mangkang'];
+      } else if (cityLower.includes('yogyakarta') || cityLower.includes('jogja')) {
+        riverNames = ['Kali Code', 'Kali Winongo', 'Kali Gajah Wong', 'Kali Progo', 'Kali Oyo', 'Kali Opak'];
+        presetSubs = ['Malioboro', 'Tugu', 'Sleman', 'Bantul', 'Kotagede', 'Gejayan'];
+      } else if (cityLower.includes('medan')) {
+        riverNames = ['Sungai Deli', 'Sungai Babura', 'Sungai Belawan', 'Sungai Denai', 'Sungai Percut', 'Sungai Sikambing'];
+        presetSubs = ['Kampung Baru', 'Belawan', 'Maimun', 'Amplas', 'Petisah', 'Johor'];
+      } else if (cityLower.includes('makassar')) {
+        riverNames = ['Sungai Jeneberang', 'Sungai Tallo', 'Paping', 'Saluran Pampang', 'Kanal Barat', 'Kanal Tengah'];
+        presetSubs = ['Panakkukang', 'Losari', 'Ujung Pandang', 'Tallo', 'Gowa', 'Tamalanrea'];
+      }
+
+      const finalSubs = Array.from(new Set([...subdistricts, ...presetSubs])).slice(0, 8);
+
+      // Generate 6 beautifully localized sensors placed around the user's region
+      const localSensors: Sensor[] = [
+        {
+          id: 'katulampa',
+          name: `Pos Pantau ${finalSubs[0]} (Hulu)`,
+          river: riverNames[0],
+          currentLevel: 140,
+          normalThreshold: 80,
+          alertLevel3: 150,
+          alertLevel2: 180,
+          alertLevel1: 200,
+          status: 'Aman',
+          coordinates: { x: 50, y: 88 },
+          region: `${city} (Hulu)`,
+          history: [90, 100, 110, 115, 120, 125, 130, 135, 140, 145, 142, 140]
+        },
+        {
+          id: 'manggarai',
+          name: `Pintu Air ${finalSubs[1]}`,
+          river: riverNames[1],
+          currentLevel: 185,
+          normalThreshold: 100,
+          alertLevel3: 150,
+          alertLevel2: 180,
+          alertLevel1: 210,
+          status: 'Siaga',
+          coordinates: { x: 55, y: 52 },
+          region: `${city} Selatan`,
+          history: [130, 135, 140, 145, 150, 155, 160, 170, 175, 180, 182, 185]
+        },
+        {
+          id: 'pesanggrahan',
+          name: `Sensor Kali ${finalSubs[2]}`,
+          river: riverNames[2],
+          currentLevel: 115,
+          normalThreshold: 120,
+          alertLevel3: 150,
+          alertLevel2: 180,
+          alertLevel1: 220,
+          status: 'Aman',
+          coordinates: { x: 32, y: 65 },
+          region: `${city} Barat`,
+          history: [95, 100, 105, 108, 110, 112, 115, 118, 120, 118, 116, 115]
+        },
+        {
+          id: 'pluit',
+          name: `Rumah Pompa ${finalSubs[3]}`,
+          river: riverNames[3],
+          currentLevel: 265,
+          normalThreshold: 150,
+          alertLevel3: 200,
+          alertLevel2: 240,
+          alertLevel1: 270,
+          status: 'Siaga',
+          coordinates: { x: 42, y: 25 },
+          region: `${city} Utara`,
+          history: [210, 220, 230, 235, 240, 245, 250, 255, 260, 262, 268, 265]
+        },
+        {
+          id: 'angke',
+          name: `Tanggul Banjir ${finalSubs[4]}`,
+          river: riverNames[4],
+          currentLevel: 165,
+          normalThreshold: 130,
+          alertLevel3: 160,
+          alertLevel2: 190,
+          alertLevel1: 230,
+          status: 'Waspada',
+          coordinates: { x: 22, y: 48 },
+          region: `${city} Barat`,
+          history: [110, 115, 120, 135, 140, 142, 148, 152, 155, 158, 162, 165]
+        },
+        {
+          id: 'karet',
+          name: `Pintu Air ${finalSubs[5]}`,
+          river: riverNames[5],
+          currentLevel: 152,
+          normalThreshold: 120,
+          alertLevel3: 150,
+          alertLevel2: 180,
+          alertLevel1: 210,
+          status: 'Waspada',
+          coordinates: { x: 45, y: 42 },
+          region: `${city} Pusat`,
+          history: [115, 120, 122, 128, 132, 136, 140, 142, 145, 148, 150, 152]
+        }
+      ];
+
+      // Calculate state statuses
+      localSensors.forEach(s => {
+        s.status = calculateStatus(s.currentLevel, s);
+      });
+
+      setSensors(localSensors);
+      setSelectedSensor(localSensors[0]);
+
+      // Generate local alert logs
+      const localAlerts: AlertLog[] = [
+        {
+          id: `alert-local-1`,
+          title: `Siaga II - Pintu Air ${finalSubs[1]}`,
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          timeRaw: new Date(Date.now() - 10 * 60 * 1000),
+          description: `Ketinggian air di Pintu Air ${finalSubs[1]} meningkat mencapai 185cm. Bersiap siaga luapan banjir di sekitar aliran ${riverNames[1]}.`,
+          severity: 'medium'
+        },
+        {
+          id: `alert-local-2`,
+          title: `Waspada Cuaca Ekstrem - ${city}`,
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          timeRaw: new Date(Date.now() - 45 * 60 * 1000),
+          description: `BMKG merilis peringatan dini curah hujan tinggi disertai angin kencang untuk wilayah ${city} dan sekitarnya.`,
+          severity: 'high'
+        },
+        {
+          id: `alert-local-3`,
+          title: `Sistem Pemantauan Siap`,
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          timeRaw: new Date(Date.now() - 180 * 60 * 1000),
+          description: `Sensor telemetri dan sistem mitigasi bencana di ${city} berfungsi normal. Seluruh gerbang air beroperasi baik.`,
+          severity: 'success'
+        }
+      ];
+      setAlertLogs(localAlerts);
+
+      // Generate local citizen reports
+      const localReports: CitizenReport[] = [
+        {
+          id: `report-local-1`,
+          title: `Genangan Jalan Raya ${finalSubs[1]}`,
+          reporter: 'Budi Santoso',
+          location: `Jl. Raya ${finalSubs[1]}, ${city}`,
+          depth: 35,
+          timestamp: 'Baru Saja',
+          status: 'Diverifikasi',
+          description: `Luapan air selokan setinggi 35cm merendam jalan raya utama. Kendaraan roda dua disarankan mencari jalur alternatif.`,
+          upvotes: 18
+        },
+        {
+          id: `report-local-2`,
+          title: `Air Sungai Mulai Naik`,
+          reporter: 'Fitriani',
+          location: `Bantaran ${riverNames[2]} ${finalSubs[2]}`,
+          depth: 20,
+          timestamp: '15 menit lalu',
+          status: 'Dalam Penanganan',
+          description: `Aliran air ${riverNames[2]} terpantau sangat deras dan mulai meluap ke halaman rumah warga terdekat.`,
+          upvotes: 11
+        }
+      ];
+      setCitizenReports(localReports);
+
+      // Dynamically adapt local weather info
+      setWeather({
+        temp: 24 + Math.round(Math.random() * 5),
+        condition: 'Hujan Ringan',
+        humidity: 89,
+        windSpeed: 13
+      });
+
+      triggerAlertLog(
+        `Lokasi Terpilih: ${city}`,
+        `Sistem berhasil menyesuaikan dashboard monitoring di area sekitar ${city}.`,
+        'success'
+      );
+    };
+
+    synchronizeAroundLocation();
+  }, [deviceLocation]);
 
   // Global maximum alarm level calculation for header alert color representation
   const getMaxAlarmSeverity = () => {
@@ -393,7 +719,7 @@ export default function App() {
           {/* Quick Help documentation link */}
           <button 
             onClick={() => {
-              alert("AquaShield Help Center\n\nUntuk bantuan operasional posko darurat, silakan gunakan Kontak Darurat di bagian bawah sidebar.");
+              alert("AquaShield Pro Help Center\n\nUntuk bantuan operasional posko darurat, silakan gunakan Kontak Darurat di bagian bawah sidebar.");
             }}
             className="p-2 hover:bg-slate-50 text-slate-500 hover:text-slate-800 rounded-full border border-slate-100 transition-all hidden sm:block"
             title="Pusat Bantuan"
@@ -520,7 +846,9 @@ export default function App() {
                         <h2 className="text-xl font-display font-extrabold text-slate-900 tracking-tight">
                           Dashboard Monitoring Real-time
                         </h2>
-                        <p className="text-xs text-slate-500 mt-0.5">Pantauan sensor mitigasi bencana luapan tanggul & curah hujan wilayah Jakarta.</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Pantauan sensor mitigasi bencana luapan tanggul & curah hujan wilayah {deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim() : 'Jakarta'}.
+                        </p>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -555,6 +883,10 @@ export default function App() {
                         onSelectSensor={(s) => setSelectedSensor(s)}
                         showHeatmap={showHeatmap}
                         onToggleHeatmap={(val) => setShowHeatmap(val)}
+                        onUpdateSensorCoordinates={handleUpdateSensorCoordinates}
+                        onAddSensor={handleAddSensor}
+                        deviceLocation={deviceLocation}
+                        onDeviceLocationChange={(loc) => setDeviceLocation(loc)}
                       />
                     </div>
 
@@ -564,7 +896,9 @@ export default function App() {
                       {/* CUACA JAKARTA CARD */}
                       <div className="bg-white rounded-2xl p-4.5 border border-slate-100 shadow-sm flex flex-col justify-between gap-3 group/weather">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CUACA JAKARTA</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            CUACA {deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim().toUpperCase() : 'JAKARTA'}
+                          </span>
                           <CloudRain className="w-4 h-4 text-secondary animate-wave" />
                         </div>
                         <div className="flex items-center gap-3">
@@ -695,6 +1029,10 @@ export default function App() {
                         onSelectSensor={(s) => setSelectedSensor(s)}
                         showHeatmap={showHeatmap}
                         onToggleHeatmap={(val) => setShowHeatmap(val)}
+                        onUpdateSensorCoordinates={handleUpdateSensorCoordinates}
+                        onAddSensor={handleAddSensor}
+                        deviceLocation={deviceLocation}
+                        onDeviceLocationChange={(loc) => setDeviceLocation(loc)}
                       />
                     </div>
                     
@@ -778,7 +1116,7 @@ export default function App() {
           {/* Core system status line footer */}
           <footer className="mt-8 pt-4 border-t border-slate-100 flex flex-wrap justify-between items-center text-[11px] text-slate-400 gap-4">
             <div>
-              © 2026 <strong>AquaShield</strong> • Posko Utama Penanggulangan Bencana Banjir Jakarta.
+              © 2026 <strong>AquaShield Pro</strong> • Posko Utama Penanggulangan Bencana Banjir Jakarta.
             </div>
             <div className="flex gap-4 font-mono font-medium">
               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> AWS Core: Online</span>

@@ -13,6 +13,8 @@ interface MapWidgetProps {
   onToggleHeatmap: (show: boolean) => void;
   onUpdateSensorCoordinates?: (id: string, x: number, y: number) => void;
   onAddSensor?: (newSensor: Sensor) => void;
+  deviceLocation: { lat: number; lon: number; region: string } | null;
+  onDeviceLocationChange: (location: { lat: number; lon: number; region: string } | null) => void;
 }
 
 export default function MapWidget({
@@ -21,13 +23,26 @@ export default function MapWidget({
   onSelectSensor,
   showHeatmap,
   onToggleHeatmap,
+  deviceLocation,
+  onDeviceLocationChange
 }: MapWidgetProps) {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Geolocation & Device Location States
-  const [deviceLocation, setDeviceLocation] = useState<{ x: number; y: number; lat: number; lon: number; region: string } | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
+
+  // Keep fresh references of props & callbacks to avoid stale closures inside Leaflet map events
+  const sensorsRef = useRef(sensors);
+  const onSelectSensorRef = useRef(onSelectSensor);
+
+  useEffect(() => {
+    sensorsRef.current = sensors;
+  }, [sensors]);
+
+  useEffect(() => {
+    onSelectSensorRef.current = onSelectSensor;
+  }, [onSelectSensor]);
 
   // Leaflet references
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -37,67 +52,61 @@ export default function MapWidget({
   const deviceMarkerRef = useRef<L.Marker | null>(null);
 
   // Map limits and coordinate helpers
-  // Longitude ranges roughly from 106.65 (West) to 106.95 (East)
-  // Latitude ranges roughly from -6.05 (North) to -6.65 (South)
+  const getCenterCoords = () => {
+    if (deviceLocation) {
+      return { lat: deviceLocation.lat, lng: deviceLocation.lon };
+    }
+    return { lat: -6.2088, lng: 106.8456 }; // Jakarta center
+  };
 
   // Interpolation helper: Maps real-world latitude/longitude to schematic coordinates % (0-100)
   const mapRealCoordsToSchematic = (lat: number, lon: number) => {
-    const minLon = 106.65;
-    const maxLon = 106.95;
+    const center = getCenterCoords();
+    const minLon = center.lng - 0.15;
+    const maxLon = center.lng + 0.15;
     let pctX = ((lon - minLon) / (maxLon - minLon)) * 100;
-    pctX = Math.max(15, Math.min(85, pctX)); // clamp to avoid edge clipping
+    pctX = Math.max(10, Math.min(90, pctX)); // clamp to avoid edge clipping
 
-    let pctY = 50;
-    if (lat < -6.45) {
-      const ratio = (lat - (-6.65)) / (-6.45 - (-6.65)); // 0 to 1
-      pctY = 80 + ratio * 15; // 80% to 95%
-    } else if (lat < -6.32) {
-      const ratio = (lat - (-6.45)) / (-6.32 - (-6.45));
-      pctY = 65 + ratio * 15; // 65% to 80%
-    } else if (lat < -6.32) {
-      const ratio = (lat - (-6.32)) / (-6.22 - (-6.32));
-      pctY = 50 + ratio * 15; // 50% to 65%
-    } else if (lat < -6.15) {
-      const ratio = (lat - (-6.22)) / (-6.15 - (-6.22));
-      pctY = 35 + ratio * 15; // 35% to 50%
-    } else {
-      const ratio = (lat - (-6.15)) / (-6.05 - (-6.15));
-      pctY = 15 + ratio * 20; // 15% to 35%
-    }
+    const minLat = center.lat - 0.2; // South limit
+    const maxLat = center.lat + 0.2; // North limit
+    let pctY = ((maxLat - lat) / (maxLat - minLat)) * 100;
+    pctY = Math.max(10, Math.min(90, pctY));
 
-    pctY = Math.max(12, Math.min(92, pctY));
     return { x: Math.round(pctX), y: Math.round(pctY) };
   };
 
   // Maps percent coordinates (0-100) back to real-world latitude/longitude
   const mapSchematicToRealCoords = (x: number, y: number) => {
-    const minLon = 106.65;
-    const maxLon = 106.95;
+    const center = getCenterCoords();
+    const minLon = center.lng - 0.15;
+    const maxLon = center.lng + 0.15;
     const lng = minLon + (x / 100) * (maxLon - minLon);
 
-    let lat = -6.20;
-    if (y >= 80) {
-      const ratio = (y - 80) / 15;
-      lat = -6.65 + ratio * (-6.45 - (-6.65));
-    } else if (y >= 65) {
-      const ratio = (y - 65) / 15;
-      lat = -6.45 + ratio * (-6.32 - (-6.45));
-    } else if (y >= 50) {
-      const ratio = (y - 50) / 15;
-      lat = -6.32 + ratio * (-6.22 - (-6.32));
-    } else if (y >= 35) {
-      const ratio = (y - 35) / 15;
-      lat = -6.22 + ratio * (-6.15 - (-6.22));
-    } else {
-      const ratio = (y - 12) / 23; // from 12% to 35%
-      lat = -6.15 + ratio * (-6.05 - (-6.15));
-    }
+    const minLat = center.lat - 0.2; // South limit
+    const maxLat = center.lat + 0.2; // North limit
+    const lat = maxLat - (y / 100) * (maxLat - minLat); // y=0 is top/North, y=100 is bottom/South
 
     return { lat, lng };
   };
 
   // Helper to determine region from coordinates
   const getRegionFromCoords = (lat: number, lon: number): string => {
+    if (deviceLocation) {
+      const cleanRegion = deviceLocation.region.replace(/\(.*\)/g, '').trim();
+      const parts = cleanRegion.split(',');
+      const city = parts[parts.length - 1]?.trim() || parts[0]?.trim() || 'Daerah Anda';
+      
+      const dLat = lat - deviceLocation.lat;
+      const dLon = lon - deviceLocation.lon;
+      
+      if (dLat < -0.05) return `${city} (Hulu)`;
+      if (dLon < -0.03) return `${city} Barat`;
+      if (dLon > 0.03) return `${city} Timur`;
+      if (dLat < -0.02) return `${city} Selatan`;
+      if (dLat > 0.03) return `${city} Utara`;
+      return `${city} Pusat`;
+    }
+
     if (lat < -6.35) return 'Bogor (Hulu)';
     if (lon < 106.78) return 'Jakarta Barat';
     if (lon > 106.88) return 'Jakarta Timur';
@@ -106,17 +115,19 @@ export default function MapWidget({
     return 'Jakarta Pusat';
   };
 
-  // Helper to find and select the nearest sensor to a given coordinate
-  const selectNearestSensorToCoords = (x: number, y: number) => {
-    if (!sensors || sensors.length === 0) return;
+  // Helper to find and select the nearest sensor to a given real coordinate (latitude, longitude)
+  const selectNearestSensorToRealCoords = (lat: number, lon: number) => {
+    const currentSensors = sensorsRef.current;
+    if (!currentSensors || currentSensors.length === 0) return;
     
-    let nearestSensor = sensors[0];
+    let nearestSensor = currentSensors[0];
     let minDistance = Infinity;
     
-    sensors.forEach((sensor) => {
+    currentSensors.forEach((sensor) => {
+      const sensorLatLng = mapSchematicToRealCoords(sensor.coordinates.x, sensor.coordinates.y);
       const dist = Math.sqrt(
-        Math.pow(sensor.coordinates.x - x, 2) + 
-        Math.pow(sensor.coordinates.y - y, 2)
+        Math.pow(sensorLatLng.lat - lat, 2) + 
+        Math.pow(sensorLatLng.lng - lon, 2)
       );
       if (dist < minDistance) {
         minDistance = dist;
@@ -124,8 +135,15 @@ export default function MapWidget({
       }
     });
     
-    onSelectSensor(nearestSensor);
+    if (onSelectSensorRef.current) {
+      onSelectSensorRef.current(nearestSensor);
+    }
   };
+
+  const selectNearestSensorRef = useRef(selectNearestSensorToRealCoords);
+  useEffect(() => {
+    selectNearestSensorRef.current = selectNearestSensorToRealCoords;
+  }, [selectNearestSensorToRealCoords]);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -152,20 +170,65 @@ export default function MapWidget({
     // Click handler to manually set location pin
     map.on('click', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
-      const coords = mapRealCoordsToSchematic(lat, lng);
       const region = getRegionFromCoords(lat, lng);
       
-      setDeviceLocation({
-        x: coords.x,
-        y: coords.y,
+      onDeviceLocationChange({
         lat: parseFloat(lat.toFixed(5)),
         lon: parseFloat(lng.toFixed(5)),
         region: `${region} (Manual)`
       });
 
-      selectNearestSensorToCoords(coords.x, coords.y);
+      selectNearestSensorToRealCoords(lat, lng);
       setLocationStatus(`Lokasi disesuaikan manual ke ${region}! Sensor terdekat otomatis dipilih.`);
       setTimeout(() => setLocationStatus(null), 4000);
+    });
+
+    // Leaflet's built-in Geolocation event listeners
+    map.on('locationfound', (e: L.LocationEvent) => {
+      const { lat, lng } = e.latlng;
+      const region = getRegionFromCoords(lat, lng);
+      const isOutsideJakarta = lat < -6.80 || lat > -5.90 || lng < 106.50 || lng > 107.10;
+
+      onDeviceLocationChange({
+        lat,
+        lon: lng,
+        region: isOutsideJakarta ? `${region} (Luar Area Peta)` : region
+      });
+
+      setIsLocating(false);
+      selectNearestSensorRef.current(lat, lng);
+
+      if (isOutsideJakarta) {
+        setLocationStatus(`Lokasi Anda terdeteksi: ${lat.toFixed(4)}, ${lng.toFixed(4)}. Sensor terdekat dipilih!`);
+      } else {
+        setLocationStatus(`Lokasi terdeteksi di area ${region}! Sensor terdekat otomatis dipilih.`);
+      }
+      setTimeout(() => setLocationStatus(null), 6000);
+    });
+
+    map.on('locationerror', (e: L.ErrorEvent) => {
+      console.warn('Leaflet geolocation failed:', e.message);
+      
+      let errorMsg = 'Gagal melacak lokasi Anda. ';
+      if (e.message.toLowerCase().includes('denied') || e.message.toLowerCase().includes('permission')) {
+        errorMsg = 'Akses lokasi ditolak browser / iframe. ';
+      }
+
+      // Simulation fallback for users with denied permissions or in sandbox
+      const simLat = -6.2735;
+      const simLon = 106.8124;
+      const region = 'Jakarta Selatan (Simulasi)';
+
+      onDeviceLocationChange({
+        lat: simLat,
+        lon: simLon,
+        region
+      });
+
+      setIsLocating(false);
+      selectNearestSensorRef.current(simLat, simLon);
+      setLocationStatus(`${errorMsg}Menggunakan simulasi Jakarta Selatan. Sensor terdekat otomatis dipilih.`);
+      setTimeout(() => setLocationStatus(null), 8000);
     });
 
     mapRef.current = map;
@@ -295,11 +358,12 @@ export default function MapWidget({
     group.clearLayers();
 
     if (showHeatmap) {
-      // Placing elegant glowing semi-transparent circles at high flood-risk areas
+      const center = getCenterCoords();
+      // Placing elegant glowing semi-transparent circles at high flood-risk areas relative to current center
       const riskZones = [
-        { lat: -6.1124, lng: 106.7915, radius: 2400, color: '#ef4444', label: 'Zona Bahaya Pluit (Rentan Banjir Rob)' },
-        { lat: -6.2115, lng: 106.8438, radius: 1800, color: '#f97316', label: 'Zona Siaga Manggarai' },
-        { lat: -6.2418, lng: 106.8624, radius: 2000, color: '#ef4444', label: 'Zona Bahaya Aliran Ciliwung' }
+        { lat: center.lat + 0.05, lng: center.lng - 0.05, radius: 2400, color: '#ef4444', label: 'Zona Bahaya Utara (Rentan Luapan)' },
+        { lat: center.lat - 0.01, lng: center.lng + 0.02, radius: 1800, color: '#f97316', label: 'Zona Siaga Aliran Utama' },
+        { lat: center.lat - 0.04, lng: center.lng + 0.03, radius: 2000, color: '#ef4444', label: 'Zona Bahaya Pemukiman Rendah' }
       ];
 
       riskZones.forEach((zone) => {
@@ -323,8 +387,8 @@ export default function MapWidget({
     if (!map) return;
 
     if (deviceLocation) {
-      const latLng = mapSchematicToRealCoords(deviceLocation.x, deviceLocation.y);
-      map.setView([latLng.lat, latLng.lng], 13, { animate: true });
+      const { lat, lon } = deviceLocation;
+      map.setView([lat, lon], 13, { animate: true });
 
       if (deviceMarkerRef.current) {
         deviceMarkerRef.current.remove();
@@ -355,7 +419,7 @@ export default function MapWidget({
         iconAnchor: [50, 27]
       });
 
-      deviceMarkerRef.current = L.marker([latLng.lat, latLng.lng], { icon: deviceIcon })
+      deviceMarkerRef.current = L.marker([lat, lon], { icon: deviceIcon })
         .addTo(map)
         .bindPopup(`
           <div class="p-1 font-sans">
@@ -363,7 +427,7 @@ export default function MapWidget({
               <span>📍 Lokasi Anda</span>
             </div>
             <div class="text-slate-300 text-[10px] mt-0.5">Wilayah: ${deviceLocation.region}</div>
-            <div class="text-slate-500 text-[9px] font-mono">${latLng.lat.toFixed(5)}, ${latLng.lng.toFixed(5)}</div>
+            <div class="text-slate-500 text-[9px] font-mono">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
           </div>
         `, { closeButton: false, offset: [0, -12] });
     } else {
@@ -374,75 +438,82 @@ export default function MapWidget({
     }
   }, [deviceLocation]);
 
-  // Geolocation Tracker
-  const handleTrackDeviceLocation = () => {
-    setIsLocating(true);
-    setLocationStatus('Mencari sinyal GPS device Anda...');
-
-    if (!navigator.geolocation) {
-      setLocationStatus('Geolokasi tidak didukung oleh browser Anda. Silakan klik langsung pada peta untuk mengatur manual!');
-      setIsLocating(false);
+  // Geocoder Address Search via OSM Nominatim API
+  const handleAddressSearch = async (query: string) => {
+    if (!query.trim()) return;
+    
+    // First, check if it matches a sensor name
+    const foundSensor = sensors.find(s => 
+      s.name.toLowerCase().includes(query.toLowerCase()) ||
+      s.river.toLowerCase().includes(query.toLowerCase()) ||
+      s.region.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    if (foundSensor) {
+      onSelectSensor(foundSensor);
+      setLocationStatus(`Menampilkan sensor ${foundSensor.name}`);
+      setTimeout(() => setLocationStatus(null), 3000);
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const coords = mapRealCoordsToSchematic(latitude, longitude);
-        const isOutsideJakarta = latitude < -6.80 || latitude > -5.90 || longitude < 106.50 || longitude > 107.10;
-        const region = getRegionFromCoords(latitude, longitude);
-
-        setDeviceLocation({
-          x: coords.x,
-          y: coords.y,
-          lat: parseFloat(latitude.toFixed(5)),
-          lon: parseFloat(longitude.toFixed(5)),
-          region: isOutsideJakarta ? `${region} (Luar Area Peta)` : region
-        });
-
-        setIsLocating(false);
-        selectNearestSensorToCoords(coords.x, coords.y);
-        
-        if (isOutsideJakarta) {
-          setLocationStatus(`Terdeteksi di luar area peta Jakarta/Bogor (Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}). Sensor terdekat otomatis dipilih!`);
+    // Search via OSM Nominatim Geocoding API (free, secure and public)
+    setLocationStatus(`Mencari "${query}"...`);
+    try {
+      const isIndonesia = query.toLowerCase().includes('indonesia');
+      const searchQueryString = isIndonesia ? query : `${query}, Indonesia`;
+      
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQueryString)}&limit=1`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+          const name = data[0].display_name.split(',')[0] || data[0].display_name;
+          const city = data[0].display_name.split(',')[1]?.trim() || 'Lokasi Terpilih';
+          
+          onDeviceLocationChange({
+            lat,
+            lon,
+            region: `${name} (${city})`
+          });
+          
+          selectNearestSensorToRealCoords(lat, lon);
+          setLocationStatus(`📍 Menemukan lokasi: ${name}. Sensor terdekat otomatis dipilih.`);
+          
+          if (mapRef.current) {
+            mapRef.current.setView([lat, lon], 14, { animate: true });
+          }
         } else {
-          setLocationStatus(`Lokasi terdeteksi di area ${region}! Sensor terdekat otomatis dipilih.`);
+          setLocationStatus(`Lokasi "${query}" tidak ditemukan. Coba keyword yang lebih umum.`);
         }
-        
-        setTimeout(() => setLocationStatus(null), 6000);
-      },
-      (error) => {
-        console.warn('Geolocation failed or permission denied, using mock simulation fallback:', error);
-        
-        let errorMsg = 'Izin GPS ditolak browser. ';
-        if (error.code === error.PERMISSION_DENIED) {
-          errorMsg = 'Akses lokasi ditolak browser / iframe. ';
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMsg = 'Sinyal lokasi tidak tersedia. ';
-        } else if (error.code === error.TIMEOUT) {
-          errorMsg = 'Waktu pencarian GPS habis. ';
-        }
+      } else {
+        setLocationStatus('Gagal menghubungi server pencarian lokasi.');
+      }
+    } catch (e) {
+      console.error(e);
+      setLocationStatus('Gagal melacak lokasi pencarian.');
+    }
+    setTimeout(() => setLocationStatus(null), 6000);
+  };
 
-        const simLat = -6.2735;
-        const simLon = 106.8124;
-        const coords = mapRealCoordsToSchematic(simLat, simLon);
-        const region = 'Jakarta Selatan (Simulasi)';
+  // Geolocation Tracker utilizing Leaflet's native map.locate API
+  const handleTrackDeviceLocation = () => {
+    setIsLocating(true);
+    setLocationStatus('Mencari sinyal GPS device Anda via Leaflet...');
 
-        setDeviceLocation({
-          x: coords.x,
-          y: coords.y,
-          lat: simLat,
-          lon: simLon,
-          region
-        });
-
-        setIsLocating(false);
-        selectNearestSensorToCoords(coords.x, coords.y);
-        setLocationStatus(`${errorMsg}Menggunakan simulasi Jakarta Selatan. Sensor terdekat otomatis dipilih.`);
-        setTimeout(() => setLocationStatus(null), 8000);
-      },
-      { enableHighAccuracy: true, timeout: 6000 }
-    );
+    const map = mapRef.current;
+    if (map) {
+      map.locate({
+        setView: true,
+        maxZoom: 14,
+        enableHighAccuracy: true,
+        timeout: 8000
+      });
+    } else {
+      setIsLocating(false);
+      setLocationStatus('Peta belum siap untuk mendeteksi lokasi.');
+      setTimeout(() => setLocationStatus(null), 3000);
+    }
   };
 
   // High-risk calculation for affected regions based on current levels
@@ -575,7 +646,7 @@ export default function MapWidget({
           {deviceLocation && (
             <button
               onClick={() => {
-                setDeviceLocation(null);
+                onDeviceLocationChange(null);
                 setSearchQuery('');
                 handleResetZoom();
               }}
@@ -586,18 +657,33 @@ export default function MapWidget({
             </button>
           )}
 
-          <div className="relative">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAddressSearch(searchQuery);
+            }}
+            className="relative"
+          >
             <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
               <Search className="w-3.5 h-3.5" />
             </span>
             <input
               type="text"
-              placeholder="Cari sensor/daerah..."
+              placeholder="Cari lokasi/alamat..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-28 sm:w-40 pl-9 pr-3 py-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-full text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-secondary focus:border-secondary shadow-lg placeholder:text-slate-500"
+              className="w-28 sm:w-48 pl-9 pr-8 py-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-full text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-secondary focus:border-secondary shadow-lg placeholder:text-slate-500"
             />
-          </div>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-300 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </form>
         </div>
       </div>
 
