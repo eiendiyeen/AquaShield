@@ -2,11 +2,56 @@ import React, { useState } from 'react';
 import { Sparkles, Brain, Cpu, BarChart2, ShieldAlert, Sliders, Info, InfoIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 
-export default function MlAnalyticsWidget() {
+interface MlAnalyticsWidgetProps {
+  deviceLocation?: { lat: number; lon: number; region: string } | null;
+}
+
+export default function MlAnalyticsWidget({ deviceLocation }: MlAnalyticsWidgetProps) {
   // Simulator inputs for our neural network prediction
   const [upstreamRain, setUpstreamRain] = useState<number>(120); // in mm
   const [localRain, setLocalRain] = useState<number>(85); // in mm
   const [seaTide, setSeaTide] = useState<number>(180); // in cm
+
+  const city = deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim() : 'Jakarta';
+  const cityLower = city.toLowerCase();
+
+  let defaultRiver = 'Ciliwung';
+  let upstreamName = 'Katulampa';
+  let gateName = 'Pintu Air Manggarai';
+
+  if (cityLower.includes('jakarta')) {
+    defaultRiver = 'Ciliwung';
+    upstreamName = 'Katulampa';
+    gateName = 'Pintu Air Manggarai';
+  } else if (cityLower.includes('bogor')) {
+    defaultRiver = 'Ciliwung';
+    upstreamName = 'Ciawi';
+    gateName = 'Katulampa';
+  } else if (cityLower.includes('bandung')) {
+    defaultRiver = 'Citarum';
+    upstreamName = 'Dago';
+    gateName = 'Dayeuhkolot';
+  } else if (cityLower.includes('surabaya')) {
+    defaultRiver = 'Kalimas';
+    upstreamName = 'Brantas';
+    gateName = 'Jembatan Merah';
+  } else if (cityLower.includes('semarang')) {
+    defaultRiver = 'Kali Garang';
+    upstreamName = 'Kreo';
+    gateName = 'Kaligawe';
+  } else if (cityLower.includes('yogyakarta') || cityLower.includes('jogja')) {
+    defaultRiver = 'Kali Code';
+    upstreamName = 'Sleman';
+    gateName = 'Tugu';
+  } else if (cityLower.includes('medan')) {
+    defaultRiver = 'Sungai Deli';
+    upstreamName = 'Babura';
+    gateName = 'Kampung Baru';
+  } else if (cityLower.includes('makassar')) {
+    defaultRiver = 'Sungai Tallo';
+    upstreamName = 'Gowa';
+    gateName = 'Panakkukang';
+  }
 
   // Calculate predicted general flood probability & height level
   const upstreamImpact = (upstreamRain / 200) * 45; // Max 45% weight
@@ -23,13 +68,13 @@ export default function MlAnalyticsWidget() {
   if (totalRiskPercentage >= 80) {
     riskCategory = "Bencana / Ekstrem (Kritis)";
     riskColor = "text-red-600 bg-red-50 border-red-200";
-    riskAlertText = "BAHAYA BESAR! Luapan air diprediksi merendam wilayah DKI Jakarta secara luas.";
-    riskAdvice = "AKTIFKAN SIRENE EVAKUASI. Siapkan tim SAR di titik rawan bencana banjir Jakarta.";
+    riskAlertText = `BAHAYA BESAR! Luapan air diprediksi merendam wilayah ${city} secara luas.`;
+    riskAdvice = `AKTIFKAN SIRENE EVAKUASI. Siapkan tim SAR di titik rawan bencana banjir ${city}.`;
   } else if (totalRiskPercentage >= 55) {
     riskCategory = "Waspada / Siaga Tinggi";
     riskColor = "text-orange-600 bg-orange-50 border-orange-200";
-    riskAlertText = "RESIKO TINGGI! Air limpasan hulu segera masuk pintu air Manggarai dalam 3 jam.";
-    riskAdvice = "Siapkan pompa penyedot mobile di wilayah bantaran Ciliwung dan koordinasi tim BPBD kelurahan.";
+    riskAlertText = `RESIKO TINGGI! Air limpasan hulu segera masuk ${gateName} dalam 3 jam.`;
+    riskAdvice = `Siapkan pompa penyedot mobile di wilayah bantaran ${defaultRiver} dan koordinasi tim BPBD kelurahan.`;
   } else if (totalRiskPercentage >= 30) {
     riskCategory = "Siaga Ringan / Waspada";
     riskColor = "text-yellow-600 bg-yellow-50 border-yellow-200";
@@ -47,7 +92,7 @@ export default function MlAnalyticsWidget() {
             <Brain className="w-5 h-5 text-secondary" />
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Eksplorasi simulator prediksi neural network (LSTM) mitigasi banjir Jakarta. Sesuaikan parameter meteorologi untuk memantau output AI.
+            Eksplorasi simulator prediksi neural network (LSTM) mitigasi banjir {city}. Sesuaikan parameter meteorologi untuk memantau output AI.
           </p>
         </div>
       </div>
@@ -64,7 +109,7 @@ export default function MlAnalyticsWidget() {
           {/* Upstream Rainfall */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-slate-700">Curah Hujan Hulu (Katulampa)</span>
+              <span className="font-semibold text-slate-700">Curah Hujan Hulu ({upstreamName})</span>
               <span className="font-mono text-secondary font-bold">{upstreamRain} mm</span>
             </div>
             <input
@@ -85,7 +130,7 @@ export default function MlAnalyticsWidget() {
           {/* Local Rainfall */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-slate-700">Curah Hujan Lokal (Jakarta)</span>
+              <span className="font-semibold text-slate-700">Curah Hujan Lokal ({city})</span>
               <span className="font-mono text-secondary font-bold">{localRain} mm</span>
             </div>
             <input
@@ -106,7 +151,7 @@ export default function MlAnalyticsWidget() {
           {/* Coastal Swell Tide */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-slate-700">Tinggi Pasang Air Laut (Teluk Jkt)</span>
+              <span className="font-semibold text-slate-700">Tinggi Pasang / Limpasan Air ({city})</span>
               <span className="font-mono text-secondary font-bold">{seaTide} cm</span>
             </div>
             <input
@@ -119,15 +164,15 @@ export default function MlAnalyticsWidget() {
               className="w-full accent-secondary cursor-pointer h-1.5 bg-slate-200 rounded-lg appearance-none"
             />
             <div className="flex justify-between text-[9px] text-slate-400">
-              <span>Surut (&lt;100cm)</span>
-              <span>Banjir Rob (&gt;250cm)</span>
+              <span>Normal (&lt;100cm)</span>
+              <span>Kritis/Pasang (&gt;250cm)</span>
             </div>
           </div>
 
           <div className="text-[10px] bg-slate-100 text-slate-500 rounded-xl p-3 flex gap-2.5 items-start">
             <Info className="w-4 h-4 text-slate-400 shrink-0" />
             <p className="leading-normal">
-              Neural network memproses tiga data utama di atas beserta trend histori muka air sungai guna meramalkan potensi banjir rob dan luapan banjir kiriman.
+              Neural network memproses tiga data utama di atas beserta trend histori muka air sungai guna meramalkan potensi banjir limpasan dan luapan banjir kiriman.
             </p>
           </div>
         </div>
@@ -203,9 +248,9 @@ export default function MlAnalyticsWidget() {
 
             <div className="space-y-3">
               {[
-                { name: 'Curah Hujan Hulu (Katulampa Watershed)', weight: '45%', value: upstreamRain, max: 250, color: 'bg-indigo-500' },
-                { name: 'Curah Hujan Lokal (Urban Runoff Jakarta)', weight: '35%', value: localRain, max: 180, color: 'bg-emerald-400' },
-                { name: 'Tinggi Pasang Air Laut (Banjir Rob Barrier)', weight: '20%', value: seaTide, max: 300, color: 'bg-sky-400' }
+                { name: `Curah Hujan Hulu (${upstreamName} Watershed)`, weight: '45%', value: upstreamRain, max: 250, color: 'bg-indigo-500' },
+                { name: `Curah Hujan Lokal (Urban Runoff ${city})`, weight: '35%', value: localRain, max: 180, color: 'bg-emerald-400' },
+                { name: `Pasang / Limpasan Air (Banjir Rob Barrier)`, weight: '20%', value: seaTide, max: 300, color: 'bg-sky-400' }
               ].map((feat) => {
                 const fillPct = Math.round((feat.value / feat.max) * 100);
                 return (

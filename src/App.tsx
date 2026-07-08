@@ -73,6 +73,45 @@ export default function App() {
   const [showNotificationDropdown, setShowNotificationDropdown] = useState<boolean>(false);
   const [systemLogsAlertCount, setSystemLogsAlertCount] = useState<number>(2);
 
+  const getRawanLocations = () => {
+    const city = deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim() : 'Jakarta';
+    if (!deviceLocation) {
+      return [
+        { name: 'Kampung Melayu', status: 'Rentan', desc: 'Bantaran Ciliwung' },
+        { name: 'Rawa Buaya', status: 'Sedang', desc: 'S. Angke' },
+        { name: 'Pluit', status: 'Sangat Rentan', desc: 'Pasang Rob / Pesisir' },
+        { name: 'Tebet Dalam', status: 'Ringan', desc: 'Saluran Drainase' }
+      ];
+    }
+    
+    const cityLower = city.toLowerCase();
+    let riverNames = ['Sungai Utama', 'Kali Anak', 'Saluran Pembuang', 'Tanggul Utama'];
+    if (cityLower.includes('jakarta')) {
+      riverNames = ['Ciliwung', 'Pesanggrahan', 'Angke', 'Banjir Kanal Barat'];
+    } else if (cityLower.includes('bogor')) {
+      riverNames = ['Ciliwung', 'Cisadane', 'Ciawi', 'Cikeas'];
+    } else if (cityLower.includes('bandung')) {
+      riverNames = ['Citarum', 'Cikapundung', 'Cisangkuy', 'Citepus'];
+    } else if (cityLower.includes('surabaya')) {
+      riverNames = ['Kalimas', 'Kali Jagir', 'Brantas', 'Kali Surabaya'];
+    } else if (cityLower.includes('semarang')) {
+      riverNames = ['Banjir Kanal Barat', 'Banjir Kanal Timur', 'Kali Garang', 'Kali Semarang'];
+    } else if (cityLower.includes('yogyakarta') || cityLower.includes('jogja')) {
+      riverNames = ['Kali Code', 'Kali Winongo', 'Kali Gajah Wong', 'Kali Progo'];
+    } else if (cityLower.includes('medan')) {
+      riverNames = ['Sungai Deli', 'Sungai Babura', 'Sungai Belawan', 'Sungai Denai'];
+    } else if (cityLower.includes('makassar')) {
+      riverNames = ['Sungai Jeneberang', 'Sungai Tallo', 'Paping', 'Saluran Pampang'];
+    }
+
+    return [
+      { name: sensors[0]?.name.replace('Pos Pantau ', '').replace('Pintu Air ', '').replace('Sensor Kali ', '') || 'Bantaran Hulu', status: 'Rentan', desc: `Bantaran ${riverNames[0] || 'Utama'}` },
+      { name: sensors[1]?.name.replace('Pos Pantau ', '').replace('Pintu Air ', '').replace('Sensor Kali ', '') || 'Wilayah Barat', status: 'Sedang', desc: `Aliran ${riverNames[1] || 'Anak'}` },
+      { name: sensors[3]?.name.replace('Pos Pantau ', '').replace('Pintu Air ', '').replace('Sensor Kali ', '') || 'Wilayah Utara', status: 'Sangat Rentan', desc: `Pasang Air / ${riverNames[3] || 'Tanggul'}` },
+      { name: sensors[5]?.name.replace('Pos Pantau ', '').replace('Pintu Air ', '').replace('Sensor Kali ', '') || 'Pusat Kota', status: 'Ringan', desc: `Saluran Drainase ${city}` }
+    ];
+  };
+
   // Auto-ticking simulation representing live data variation
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -586,7 +625,7 @@ export default function App() {
     <div id="aquashield-application" className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans flex flex-col selection:bg-secondary/20 selection:text-secondary antialiased">
       
       {/* 1. TOP UTILITY HEADER BAR */}
-      <header id="top-utility-bar" className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 lg:px-8 py-3.5 flex items-center justify-between transition-all">
+      <header id="top-utility-bar" className="sticky top-0 z-[1050] bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 lg:px-8 py-3.5 flex items-center justify-between transition-all">
         
         {/* Brand Logo & Mobile Trigger */}
         <div className="flex items-center gap-3">
@@ -745,7 +784,7 @@ export default function App() {
         {/* LEFT SIDEBAR NAVIGATION */}
         <aside 
           id="main-navigation-sidebar" 
-          className={`fixed lg:sticky top-[61px] bottom-0 left-0 w-72 bg-white border-r border-slate-100 p-6 flex flex-col justify-between z-30 transition-all duration-300 lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
+          className={`fixed lg:sticky top-[61px] bottom-0 left-0 w-72 bg-white border-r border-slate-100 p-6 flex flex-col justify-between z-[1040] transition-all duration-300 lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
         >
           {/* Top section: Brand Identity & Menu Items */}
           <div className="space-y-7">
@@ -943,49 +982,61 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* S. CILIWUNG - KATULAMPA CARD */}
+                      {/* SENSOR 1 SUMMARY CARD */}
                       <div 
-                        className={`bg-white rounded-2xl p-4.5 border transition-all cursor-pointer flex flex-col justify-between gap-3 ${selectedSensor?.id === 'katulampa' ? 'border-red-500 shadow-md ring-1 ring-red-100' : 'border-red-100 hover:border-red-200'}`}
-                        onClick={() => setSelectedSensor(sensors.find(s => s.id === 'katulampa') || null)}
+                        className={`bg-white rounded-2xl p-4.5 border transition-all cursor-pointer flex flex-col justify-between gap-3 ${selectedSensor?.id === (sensors[0]?.id || 'katulampa') ? 'border-red-500 shadow-md ring-1 ring-red-100' : 'border-red-100 hover:border-red-200'}`}
+                        onClick={() => setSelectedSensor(sensors[0] || null)}
                       >
-                        <div className="flex justify-between items-start">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">S. CILIWUNG - KATULAMPA</span>
-                          <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">
+                            {sensors[0] ? `${sensors[0].river} - ${sensors[0].name}` : 'S. CILIWUNG - KATULAMPA'}
+                          </span>
+                          <span className="h-2 w-2 rounded-full bg-red-500 animate-ping shrink-0" />
                         </div>
                         <div className="flex items-baseline gap-1">
                           <span className="text-3xl font-mono font-bold text-red-600 tracking-tight leading-none">
-                            {sensors.find(s => s.id === 'katulampa')?.currentLevel || 210}
+                            {sensors[0]?.currentLevel || 210}
                           </span>
                           <span className="text-xs text-slate-500">cm</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700 uppercase">
-                            SIAGA I
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            sensors[0]?.status === 'Critical' ? 'bg-red-100 text-red-700' :
+                            sensors[0]?.status === 'Siaga' ? 'bg-orange-100 text-orange-700' :
+                            sensors[0]?.status === 'Waspada' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                          }`}>
+                            {sensors[0]?.status === 'Critical' ? 'SIAGA I' : sensors[0]?.status === 'Siaga' ? 'SIAGA II' : sensors[0]?.status === 'Waspada' ? 'SIAGA III' : 'NORMAL'}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">Tanggul Hulu</span>
+                          <span className="text-[10px] text-slate-400 font-mono line-clamp-1">{sensors[0]?.region || 'Tanggul Hulu'}</span>
                         </div>
                       </div>
 
-                      {/* KALI PESANGGRAHAN CARD */}
+                      {/* SENSOR 2 SUMMARY CARD */}
                       <div 
-                        className={`bg-white rounded-2xl p-4.5 border transition-all cursor-pointer flex flex-col justify-between gap-3 ${selectedSensor?.id === 'pesanggrahan' ? 'border-sky-500 shadow-md ring-1 ring-sky-100' : 'border-slate-100 hover:border-slate-200'}`}
-                        onClick={() => setSelectedSensor(sensors.find(s => s.id === 'pesanggrahan') || null)}
+                        className={`bg-white rounded-2xl p-4.5 border transition-all cursor-pointer flex flex-col justify-between gap-3 ${selectedSensor?.id === (sensors[1]?.id || 'pesanggrahan') ? 'border-sky-500 shadow-md ring-1 ring-sky-100' : 'border-slate-100 hover:border-slate-200'}`}
+                        onClick={() => setSelectedSensor(sensors[1] || null)}
                       >
-                        <div className="flex justify-between items-start">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">KALI PESANGGRAHAN</span>
-                          <span className="h-2 w-2 rounded-full bg-sky-400" />
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">
+                            {sensors[1] ? `${sensors[1].river} - ${sensors[1].name}` : 'KALI PESANGGRAHAN'}
+                          </span>
+                          <span className="h-2 w-2 rounded-full bg-sky-400 shrink-0" />
                         </div>
                         <div className="flex items-baseline gap-1">
                           <span className="text-3xl font-mono font-bold text-slate-800 tracking-tight leading-none">
-                            {sensors.find(s => s.id === 'pesanggrahan')?.currentLevel || 145}
+                            {sensors[1]?.currentLevel || 145}
                           </span>
                           <span className="text-xs text-slate-500">cm</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 uppercase">
-                            NORMAL
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            sensors[1]?.status === 'Critical' ? 'bg-red-100 text-red-700' :
+                            sensors[1]?.status === 'Siaga' ? 'bg-orange-100 text-orange-700' :
+                            sensors[1]?.status === 'Waspada' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                          }`}>
+                            {sensors[1]?.status === 'Critical' ? 'SIAGA I' : sensors[1]?.status === 'Siaga' ? 'SIAGA II' : sensors[1]?.status === 'Waspada' ? 'SIAGA III' : 'NORMAL'}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">Pesanggrahan</span>
+                          <span className="text-[10px] text-slate-400 font-mono line-clamp-1">{sensors[1]?.region || 'Pesanggrahan'}</span>
                         </div>
                       </div>
 
@@ -1047,7 +1098,7 @@ export default function App() {
                           </label>
                           <label className="flex items-center gap-2.5 text-xs text-slate-600 font-medium cursor-pointer">
                             <input type="checkbox" defaultChecked className="rounded text-secondary focus:ring-secondary" />
-                            Aliran Sungai DKI (Main Riverbeds)
+                            Aliran Sungai {deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim().toUpperCase() : 'DKI'} (Main Riverbeds)
                           </label>
                           <label className="flex items-center gap-2.5 text-xs text-slate-600 font-medium cursor-pointer">
                             <input type="checkbox" defaultChecked className="rounded text-secondary focus:ring-secondary" />
@@ -1063,12 +1114,7 @@ export default function App() {
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
                         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Lokasi Rawan Utama</h3>
                         <div className="space-y-2">
-                          {[
-                            { name: 'Kampung Melayu', status: 'Rentan', desc: 'Bantaran Ciliwung' },
-                            { name: 'Rawa Buaya', status: 'Sedang', desc: 'S. Angke' },
-                            { name: 'Pluit', status: 'Sangat Rentan', desc: 'Pasang Rob / Pesisir' },
-                            { name: 'Tebet Dalam', status: 'Ringan', desc: 'Saluran Drainase' }
-                          ].map((loc) => (
+                          {getRawanLocations().map((loc) => (
                             <div key={loc.name} className="bg-white p-2.5 rounded-lg border border-slate-100 flex justify-between items-center text-xs">
                               <div>
                                 <span className="font-bold text-slate-800">{loc.name}</span>
@@ -1093,12 +1139,13 @@ export default function App() {
                   selectedSensor={selectedSensor}
                   onSelectSensor={(s) => setSelectedSensor(s)}
                   onUpdateSensorLevel={handleUpdateSensorLevel}
+                  deviceLocation={deviceLocation}
                 />
               )}
 
               {/* TAB 4: LSTM & RANDOM FOREST AI CONTROLS (ANALITIK ML) */}
               {activeTab === 'analitik-ml' && (
-                <MlAnalyticsWidget />
+                <MlAnalyticsWidget deviceLocation={deviceLocation} />
               )}
 
               {/* TAB 5: COMMUNITY REPORTS & FIELD INCIDENTS (LAPORAN) */}
@@ -1116,7 +1163,7 @@ export default function App() {
           {/* Core system status line footer */}
           <footer className="mt-8 pt-4 border-t border-slate-100 flex flex-wrap justify-between items-center text-[11px] text-slate-400 gap-4">
             <div>
-              © 2026 <strong>AquaShield Pro</strong> • Posko Utama Penanggulangan Bencana Banjir Jakarta.
+              © 2026 <strong>AquaShield Pro</strong> • Posko Utama Penanggulangan Bencana Banjir {deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim() : 'Jakarta'}.
             </div>
             <div className="flex gap-4 font-mono font-medium">
               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> AWS Core: Online</span>
@@ -1153,6 +1200,7 @@ export default function App() {
             isOpen={isSirenModalOpen}
             onClose={() => setIsSirenModalOpen(false)}
             onTriggerAlert={triggerAlertLog}
+            deviceLocation={deviceLocation}
           />
         )}
       </AnimatePresence>

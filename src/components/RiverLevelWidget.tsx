@@ -9,14 +9,18 @@ interface RiverLevelWidgetProps {
   selectedSensor: Sensor | null;
   onSelectSensor: (sensor: Sensor) => void;
   onUpdateSensorLevel: (id: string, level: number) => void;
+  deviceLocation?: { lat: number; lon: number; region: string } | null;
 }
 
 export default function RiverLevelWidget({
   sensors,
   selectedSensor,
   onSelectSensor,
-  onUpdateSensorLevel
+  onUpdateSensorLevel,
+  deviceLocation
 }: RiverLevelWidgetProps) {
+
+  const city = deviceLocation ? deviceLocation.region.replace(/\(.*\)/g, '').split(',')[0].trim() : 'DKI Jakarta';
 
   return (
     <div id="river-level-widget" className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-6">
@@ -28,7 +32,7 @@ export default function RiverLevelWidget({
             <Waves className="w-5 h-5 text-secondary" />
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Daftar lengkap pos pantau sensor ultrasonik aliran sungai DKI Jakarta. Sesuaikan slider tinggi air untuk simulasi EWS.
+            Daftar lengkap pos pantau sensor ultrasonik aliran sungai wilayah {city}. Sesuaikan slider tinggi air untuk simulasi EWS.
           </p>
         </div>
       </div>
